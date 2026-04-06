@@ -451,7 +451,7 @@
     drawGoalLine(W);
 
     // Shot marker — capture area circle + center dot (rendered last so it sits on top)
-    const CAPTURE_R = 50; // must match radius_px in compute.py
+    const CAPTURE_R = 25; // must match radius_px in compute.py
     const shotMarker = svg.append("g").style("display", "none").style("pointer-events", "none");
     shotMarker.append("circle").attr("r", CAPTURE_R)
         .attr("fill", "rgba(255,255,255,0.07)")
