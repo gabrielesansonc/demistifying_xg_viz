@@ -2,333 +2,610 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Soccer Field with Filters</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demystifying xG</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: #0b0f1a;
+            color: #e2e8f0;
+            min-height: 100vh;
+            padding: 2.5rem 1.5rem 4rem;
+        }
+
+        .container {
+            max-width: 840px;
+            margin: 0 auto;
+        }
+
+        /* ── Header ── */
+        .header {
             text-align: center;
-            font-family: Arial, sans-serif;
-        }
-        #controls {
-            margin-bottom: 10px;
-        }
-        #coordinates, #selected-options {
-            margin-top: 10px;
-            font-size: 14px;
-            font-weight: bold;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid #1a2336;
+            padding-bottom: 1.75rem;
         }
 
-    #results-container {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        gap: 50px;
-        margin-top: 20px;
-    }
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: #f8fafc;
+            margin-bottom: 1rem;
+        }
 
-    #xg-display {
-        font-size: 50px;
-        font-weight: bold;
-        padding: 20px;
-        border-radius: 10px;
-    }
+        .steps {
+            display: flex;
+            justify-content: center;
+            gap: 2.5rem;
+        }
 
-    #bar-chart {
-        width: 300px;
-        height: 200px;
-    }
+        .step {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.6rem;
+            font-size: 0.82rem;
+            color: #7d8fa8;
+            max-width: 240px;
+            text-align: left;
+            line-height: 1.5;
+        }
 
+        .step-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 1.25rem;
+            height: 1.25rem;
+            border-radius: 50%;
+            background: #1d4ed8;
+            color: #fff;
+            font-size: 0.6rem;
+            font-weight: 700;
+            flex-shrink: 0;
+            margin-top: 0.1rem;
+        }
+
+        /* ── Controls ── */
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 1.25rem;
+            margin-bottom: 1.25rem;
+            flex-wrap: wrap;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+
+        .filter-group label {
+            font-size: 0.6rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: #3d5068;
+        }
+
+        .filter-group select {
+            background: #111827;
+            border: 1px solid #1a2842;
+            color: #c8d5e5;
+            padding: 0.45rem 2.1rem 0.45rem 0.7rem;
+            border-radius: 5px;
+            font-size: 0.78rem;
+            font-family: inherit;
+            appearance: none;
+            cursor: pointer;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%233d5068' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.6rem center;
+            transition: border-color 0.15s, background-color 0.15s;
+            min-width: 165px;
+        }
+
+        .filter-group select:hover {
+            border-color: #253650;
+            background-color: #141e2d;
+        }
+
+        .filter-group select:focus {
+            outline: none;
+            border-color: #2563eb;
+        }
+
+        .filter-group select option {
+            background: #111827;
+            color: #c8d5e5;
+        }
+
+        /* ── Field ── */
+        .field-wrapper {
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid #1a2336;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.55);
+        }
+
+        #soccer-field {
+            display: block;
+            line-height: 0;
+        }
+
+        /* ── Status bar ── */
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 0.6rem;
+            padding: 0 0.1rem;
+        }
+
+        #coordinates {
+            font-size: 0.7rem;
+            color: #3d5068;
+            font-variant-numeric: tabular-nums;
+        }
+
+        #selected-options {
+            font-size: 0.7rem;
+            color: #3d5068;
+        }
+
+        /* ── Results ── */
+        .results {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.25rem;
+            align-items: stretch;
+        }
+
+        .panel {
+            background: #0f1623;
+            border: 1px solid #1a2336;
+            border-radius: 8px;
+            padding: 1.25rem 1.5rem;
+        }
+
+        .panel-label {
+            font-size: 0.6rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: #3d5068;
+            margin-bottom: 0.875rem;
+        }
+
+        /* xG panel */
+        .xg-panel {
+            min-width: 148px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        #xg-number {
+            font-size: 3.75rem;
+            font-weight: 800;
+            letter-spacing: -0.04em;
+            line-height: 1;
+            color: #1a2842;
+            transition: color 0.35s ease;
+            font-variant-numeric: tabular-nums;
+        }
+
+        #xg-sublabel {
+            font-size: 0.6rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            color: #1a2842;
+            margin-top: 0.35rem;
+            transition: color 0.35s ease;
+        }
+
+        /* Chart panel */
+        .chart-panel {
+            flex: 1;
+            min-width: 0;
+        }
+
+        #bar-chart {
+            width: 100%;
+        }
+
+        .placeholder-text {
+            font-size: 0.78rem;
+            color: #283848;
+            text-align: center;
+            padding: 1.25rem 0 0.75rem;
+        }
     </style>
 </head>
 <body>
-    <h1>Demystifying xG: Make Your Own Shot & See the xG</h1>
-    <h5>1. Take your shot: Choose your options and click on the field where the shot happened.</h5>
-    <h5>2. Discover the average xG and how similar shots typically end.</h5>
+<div class="container">
 
-    <div id="controls">
-        <label for="last-action" style="font-size: 14px; font-weight: bold">Last Action: </label>
-        <select id="last-action">
-            <option value="All">All</option>
-            <option value="Aerial">Aerial</option>
-            <option value="Pass">Pass</option>
-            <option value="Foul">Foul</option>
-            <option value="Rebound">Rebound</option>
-            <option value="Cross">Cross</option>
-            <option value="Chipped">Chipped</option>
-            <option value="Dispossessed">Dispossessed</option>
-            <option value="BallTouch">BallTouch</option>
-            <option value="HeadPass">HeadPass</option>
-            <option value="CornerAwarded">CornerAwarded</option>
-            <option value="TakeOn">TakeOn</option>
-            <option value="BallRecovery">BallRecovery</option>
-            <option value="Throughball">Throughball</option>
-            <option value="BlockedPass">BlockedPass</option>
-            <option value="Tackle">Tackle</option>
-            <option value="Standard">Standard</option>
-            <option value="LayOff">LayOff</option>
-            <option value="Card">Card</option>
-            <option value="Clearance">Clearance</option>
-            <option value="Interception">Interception</option>
-            <option value="Challenge">Challenge</option>
-            <option value="End">End</option>
-            <option value="Save">Save</option>
-            <option value="Goal">Goal</option>
-            <option value="OffsidePass">OffsidePass</option>
-            <option value="Start">Start</option>
-            <option value="FormationChange">FormationChange</option>
-            <option value="SubstitutionOn">SubstitutionOn</option>
-            <option value="GoodSkill">GoodSkill</option>
-            <option value="Punch">Punch</option>
-            <option value="KeeperPickup">KeeperPickup</option>
-            <option value="KeeperSweeper">KeeperSweeper</option>
-            <option value="Error">Error</option>
-            <option value="OffsideProvoked">OffsideProvoked</option>
-            <option value="PenaltyFaced">PenaltyFaced</option>
-            <option value="CrossNotClaimed">CrossNotClaimed</option>
-            <option value="ShieldBallOpp">ShieldBallOpp</option>
-            <option value="Smother">Smother</option>
-            <option value="ChanceMissed">ChanceMissed</option>
-        </select>
-
-        <label for="shot-type" style="font-size: 14px; font-weight: bold">Shot Type: </label>
-        <select id="shot-type">
-            <option value="All">All</option>
-            <option value="RightFoot">RightFoot</option>
-            <option value="Head">Head</option>
-            <option value="LeftFoot">LeftFoot</option>
-            <option value="OtherBodyPart">OtherBodyPart</option>
-        </select>
-
-        <label for="situation" style="font-size: 14px; font-weight: bold">Situation: </label>
-        <select id="situation">
-            <option value="All">All</option>
-            <option value="FromCorner">FromCorner</option>
-            <option value="SetPiece">SetPiece</option>
-            <option value="OpenPlay">OpenPlay</option>
-            <option value="DirectFreekick">DirectFreekick</option>
-            <option value="Penalty">Penalty</option>
-        </select>
+    <div class="header">
+        <h1>Demystifying xG: Make Your Own Shot &amp; See the xG</h1>
+        <div class="steps">
+            <div class="step">
+                <span class="step-badge">1</span>
+                <span>Choose your options and click on the field where the shot happened.</span>
+            </div>
+            <div class="step">
+                <span class="step-badge">2</span>
+                <span>Discover the average xG and how similar shots typically end.</span>
+            </div>
+        </div>
     </div>
 
-    <div id="soccer-field"></div>
-    <p id="coordinates">Click anywhere on the field</p>
-    <p id="selected-options">Selected Options: Last Action - All | Shot Type - All | Situation - All</p>
-    <div id="results-container">
-        <div id="xg-display"></div>  <!-- Big Number for xG -->
-        <div id="bar-chart"></div>    <!-- Bar Chart for Histogram -->
+    <div class="controls">
+        <div class="filter-group">
+            <label for="last-action">Last Action</label>
+            <select id="last-action">
+                <option value="All">All</option>
+                <option value="Aerial">Aerial</option>
+                <option value="Pass">Pass</option>
+                <option value="Foul">Foul</option>
+                <option value="Rebound">Rebound</option>
+                <option value="Cross">Cross</option>
+                <option value="Chipped">Chipped</option>
+                <option value="Dispossessed">Dispossessed</option>
+                <option value="BallTouch">Ball Touch</option>
+                <option value="HeadPass">Head Pass</option>
+                <option value="CornerAwarded">Corner Awarded</option>
+                <option value="TakeOn">Take On</option>
+                <option value="BallRecovery">Ball Recovery</option>
+                <option value="Throughball">Throughball</option>
+                <option value="BlockedPass">Blocked Pass</option>
+                <option value="Tackle">Tackle</option>
+                <option value="Standard">Standard</option>
+                <option value="LayOff">Lay Off</option>
+                <option value="Card">Card</option>
+                <option value="Clearance">Clearance</option>
+                <option value="Interception">Interception</option>
+                <option value="Challenge">Challenge</option>
+                <option value="End">End</option>
+                <option value="Save">Save</option>
+                <option value="Goal">Goal</option>
+                <option value="OffsidePass">Offside Pass</option>
+                <option value="Start">Start</option>
+                <option value="FormationChange">Formation Change</option>
+                <option value="SubstitutionOn">Substitution On</option>
+                <option value="GoodSkill">Good Skill</option>
+                <option value="Punch">Punch</option>
+                <option value="KeeperPickup">Keeper Pickup</option>
+                <option value="KeeperSweeper">Keeper Sweeper</option>
+                <option value="Error">Error</option>
+                <option value="OffsideProvoked">Offside Provoked</option>
+                <option value="PenaltyFaced">Penalty Faced</option>
+                <option value="CrossNotClaimed">Cross Not Claimed</option>
+                <option value="ShieldBallOpp">Shield Ball Opp</option>
+                <option value="Smother">Smother</option>
+                <option value="ChanceMissed">Chance Missed</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label for="shot-type">Shot Type</label>
+            <select id="shot-type">
+                <option value="All">All</option>
+                <option value="RightFoot">Right Foot</option>
+                <option value="Head">Head</option>
+                <option value="LeftFoot">Left Foot</option>
+                <option value="OtherBodyPart">Other Body Part</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label for="situation">Situation</label>
+            <select id="situation">
+                <option value="All">All</option>
+                <option value="FromCorner">From Corner</option>
+                <option value="SetPiece">Set Piece</option>
+                <option value="OpenPlay">Open Play</option>
+                <option value="DirectFreekick">Direct Free Kick</option>
+                <option value="Penalty">Penalty</option>
+            </select>
+        </div>
     </div>
 
+    <div class="field-wrapper">
+        <div id="soccer-field"></div>
+    </div>
 
-    <script>
-        const width = 800;
-        const height = width * 0.64;
+    <div class="status-bar">
+        <span id="coordinates">Click anywhere on the field to place a shot</span>
+        <span id="selected-options">Last Action: All &nbsp;·&nbsp; Shot Type: All &nbsp;·&nbsp; Situation: All</span>
+    </div>
 
-        const fieldColor = "#007A33";
-        const lineColor = "white";
+    <div class="results">
+        <div class="panel xg-panel">
+            <div class="panel-label">Expected Goals</div>
+            <div id="xg-number">—</div>
+            <div id="xg-sublabel">xG</div>
+        </div>
+        <div class="panel chart-panel">
+            <div class="panel-label">Shot Outcome Distribution</div>
+            <div id="bar-chart">
+                <p class="placeholder-text">Place a shot on the field to see results</p>
+            </div>
+        </div>
+    </div>
 
-        const svg = d3.select("#soccer-field")
-            .append("svg")
-            .attr("width", width)
-            .attr("height", height)
-            .style("background-color", fieldColor);
+</div>
 
-        // Field boundaries
+<script>
+    const W = 800;
+    const H = Math.round(W * 0.64); // 512
+
+    const FIELD_DARK  = "#263d18";
+    const FIELD_LIGHT = "#2a4219";
+    const LINE_COLOR  = "rgba(255,255,255,0.75)";
+    const LINE_W      = 2;
+
+    const outcomeLabels = {
+        "Goal":        "Goal",
+        "SavedShot":   "Saved",
+        "MissedShots": "Missed",
+        "BlockedShot": "Blocked",
+        "ShotOnPost":  "Post",
+        "OwnGoals":    "Own Goal"
+    };
+
+    const outcomeColors = {
+        "Goal":        "#22c55e",
+        "SavedShot":   "#3b82f6",
+        "MissedShots": "#ef4444",
+        "BlockedShot": "#f59e0b",
+        "ShotOnPost":  "#a78bfa",
+        "OwnGoals":    "#94a3b8"
+    };
+
+    // ── Build SVG ──
+    const svg = d3.select("#soccer-field")
+        .append("svg")
+        .attr("width", W)
+        .attr("height", H)
+        .style("cursor", "crosshair")
+        .style("display", "block");
+
+    // Grass stripes
+    const NUM_STRIPES = 8;
+    const stripeH = H / NUM_STRIPES;
+    for (let i = 0; i < NUM_STRIPES; i++) {
         svg.append("rect")
-            .attr("x", 0)
-            .attr("y", 0)
-            .attr("width", width)
-            .attr("height", height)
-            .attr("stroke", lineColor)
-            .attr("fill", "none")
-            .attr("stroke-width", 4);
+            .attr("x", 0).attr("y", i * stripeH)
+            .attr("width", W).attr("height", stripeH)
+            .attr("fill", i % 2 === 0 ? FIELD_DARK : FIELD_LIGHT);
+    }
 
-        // Midfield line
+    // Field border
+    svg.append("rect")
+        .attr("x", 1).attr("y", 1)
+        .attr("width", W - 2).attr("height", H - 2)
+        .attr("stroke", LINE_COLOR).attr("fill", "none")
+        .attr("stroke-width", LINE_W * 1.5);
+
+    // Midfield line
+    svg.append("line")
+        .attr("x1", W/2).attr("y1", 0)
+        .attr("x2", W/2).attr("y2", H)
+        .attr("stroke", LINE_COLOR).attr("stroke-width", LINE_W);
+
+    // Center circle
+    svg.append("circle")
+        .attr("cx", W/2).attr("cy", H/2)
+        .attr("r", W * 0.0915)
+        .attr("stroke", LINE_COLOR).attr("fill", "none")
+        .attr("stroke-width", LINE_W);
+
+    // Center dot
+    svg.append("circle")
+        .attr("cx", W/2).attr("cy", H/2)
+        .attr("r", 3).attr("fill", LINE_COLOR);
+
+    // Boxes
+    const pbW = W * 0.165;
+    const pbH = H * 0.63;
+    const gbW = W * 0.055;
+    const gbH = H * 0.285;
+
+    function drawRect(x, y, w, h) {
+        svg.append("rect")
+            .attr("x", x).attr("y", y)
+            .attr("width", w).attr("height", h)
+            .attr("stroke", LINE_COLOR).attr("fill", "none")
+            .attr("stroke-width", LINE_W);
+    }
+
+    drawRect(0, (H - pbH) / 2, pbW, pbH);
+    drawRect(0, (H - gbH) / 2, gbW, gbH);
+    drawRect(W - pbW, (H - pbH) / 2, pbW, pbH);
+    drawRect(W - gbW, (H - gbH) / 2, gbW, gbH);
+
+    // Penalty spots
+    const lPenX = pbW * 0.73;
+    const rPenX = W - lPenX;
+    const penY  = H / 2;
+
+    svg.append("circle").attr("cx", lPenX).attr("cy", penY).attr("r", 2.5).attr("fill", LINE_COLOR);
+    svg.append("circle").attr("cx", rPenX).attr("cy", penY).attr("r", 2.5).attr("fill", LINE_COLOR);
+
+    // Goals (lines at field edges)
+    function drawGoalLine(x) {
         svg.append("line")
-            .attr("x1", width / 2)
-            .attr("y1", 0)
-            .attr("x2", width / 2)
-            .attr("y2", height)
-            .attr("stroke", lineColor)
-            .attr("stroke-width", 3);
+            .attr("x1", x).attr("y1", (H - gbH) / 2)
+            .attr("x2", x).attr("y2", (H + gbH) / 2)
+            .attr("stroke", LINE_COLOR).attr("stroke-width", LINE_W * 1.5);
+    }
+    drawGoalLine(0);
+    drawGoalLine(W);
 
-        // Center circle
-        svg.append("circle")
-            .attr("cx", width / 2)
-            .attr("cy", height / 2)
-            .attr("r", width * 0.0915)
-            .attr("stroke", lineColor)
-            .attr("fill", "none")
-            .attr("stroke-width", 3);
+    // Shot marker (rendered last so it sits on top)
+    const shotMarker = svg.append("g").style("display", "none").style("pointer-events", "none");
+    shotMarker.append("circle").attr("r", 9).attr("fill", "rgba(255,255,255,0.15)").attr("stroke", "rgba(255,255,255,0.9)").attr("stroke-width", 1.5);
+    shotMarker.append("circle").attr("r", 2.5).attr("fill", "white");
 
-        // Penalty areas
-        const penaltyBoxWidth = width * 0.165;
-        const penaltyBoxHeight = height * 0.63;
-        const goalBoxWidth = width * 0.055;
-        const goalBoxHeight = height * 0.285;
+    // ── Click handler ──
+    svg.on("click", function(event) {
+        const [px, py] = d3.pointer(event);
+        const scaledX = (px / W).toFixed(3);
+        const scaledY = (py / H).toFixed(3);
 
-        function drawBox(x, y, boxWidth, boxHeight) {
-            svg.append("rect")
-                .attr("x", x)
-                .attr("y", y)
-                .attr("width", boxWidth)
-                .attr("height", boxHeight)
-                .attr("stroke", lineColor)
-                .attr("fill", "none")
-                .attr("stroke-width", 3);
-        }
+        shotMarker
+            .style("display", null)
+            .attr("transform", `translate(${px},${py})`);
 
-        drawBox(0, (height - penaltyBoxHeight) / 2, penaltyBoxWidth, penaltyBoxHeight);
-        drawBox(width - penaltyBoxWidth, (height - penaltyBoxHeight) / 2, penaltyBoxWidth, penaltyBoxHeight);
-
-        drawBox(0, (height - goalBoxHeight) / 2, goalBoxWidth, goalBoxHeight);
-        drawBox(width - goalBoxWidth, (height - goalBoxHeight) / 2, goalBoxWidth, goalBoxHeight);
-
-        // Goals
-        function drawGoal(x) {
-            svg.append("line")
-                .attr("x1", x)
-                .attr("y1", (height - goalBoxHeight) / 2)
-                .attr("x2", x)
-                .attr("y2", (height + goalBoxHeight) / 2)
-                .attr("stroke", lineColor)
-                .attr("stroke-width", 3);
-        }
-
-        drawGoal(0);
-        drawGoal(width);
-
-        svg.on("click", function(event) {
-        const [x, y] = d3.pointer(event);
-        const scaledX = (x / width).toFixed(2);
-        const scaledY = (y / height).toFixed(2);
-
-        d3.select("#coordinates").text(`Clicked Coordinates: (${scaledX}, ${scaledY})`);
+        document.getElementById("coordinates").textContent =
+            `Shot at (${scaledX}, ${scaledY})`;
 
         sendDataToServer(scaledX, scaledY);
     });
 
-        // Update selected options text when dropdowns change
-        function updateSelectedOptions() {
-            const lastAction = document.getElementById("last-action").value;
-            const shotType = document.getElementById("shot-type").value;
-            const situation = document.getElementById("situation").value;
+    // ── Dropdown sync ──
+    function updateSelectedOptions() {
+        const la = document.getElementById("last-action").options[document.getElementById("last-action").selectedIndex].text;
+        const st = document.getElementById("shot-type").options[document.getElementById("shot-type").selectedIndex].text;
+        const si = document.getElementById("situation").options[document.getElementById("situation").selectedIndex].text;
+        document.getElementById("selected-options").textContent =
+            `Last Action: ${la}  ·  Shot Type: ${st}  ·  Situation: ${si}`;
+    }
 
-            d3.select("#selected-options").text(`Selected Options: Last Action - ${lastAction} | Shot Type - ${shotType} | Situation - ${situation}`);
-        }
+    document.querySelectorAll("select").forEach(s => s.addEventListener("change", updateSelectedOptions));
 
-        document.querySelectorAll("select").forEach(select => {
-            select.addEventListener("change", updateSelectedOptions);
-        });
+    // ── API ──
+    function sendDataToServer(x, y) {
+        const lastAction = document.getElementById("last-action").value;
+        const shotType   = document.getElementById("shot-type").value;
+        const situation  = document.getElementById("situation").value;
 
-        function sendDataToServer(x, y) {
-            const lastAction = document.getElementById("last-action").value;
-            const shotType = document.getElementById("shot-type").value;
-            const situation = document.getElementById("situation").value;
-
-            $.ajax({
-                url: "/api/compute",
-                type: "POST",
-                contentType: "application/json",
-                data: JSON.stringify({
-                    x,
-                    y,
-                    last_action: lastAction,
-                    shot_type: shotType,
-                    situation: situation
-                }),
-                success: function(response) {
-                    console.log("Server Response:", response);
-
-                    // Display the Average xG as a Big Number with Color
-                    if (response["Average xG"] !== undefined) {
-                        let xG = response["Average xG"].toFixed(2);
-                        let colorScale = d3.scaleLinear()
-                            .domain([0, 0.3, 0.5, 1])
-                            .range(["#d73027", "#ff6600", "#1a9850", "#11c223"]);
-
-                        let color = colorScale(xG);
-
-                        d3.select("#xg-display")
-                            .text(`xG: ${xG}`)
-                            .style("background-color", color)
-                            .style("color", "white");
-                    } else {
-                        d3.select("#xg-display").text("Error: Computation Failed");
-                    }
-
-                    // Create a D3 Bar Chart for the Histogram
-                    if (response.Result && Object.keys(response.Result).length > 0) {
-                        d3.select("#bar-chart").html(""); // Clear previous chart
-
-                        let data = Object.entries(response.Result)
-                            .map(([key, value]) => ({ outcome: key, percentage: value }))
-                            .sort((a, b) => b.percentage - a.percentage);
-
-                        let width = 300;
-                        let height = 200;
-                        let margin = { top: 20, right: 20, bottom: 50, left: 50 };
-
-                        let svg = d3.select("#bar-chart")
-                            .append("svg")
-                            .attr("width", width)
-                            .attr("height", height);
-
-                        let xScale = d3.scaleBand()
-                            .domain(data.map(d => d.outcome))
-                            .range([margin.left, width - margin.right])
-                            .padding(0.2);
-
-                        let yScale = d3.scaleLinear()
-                            .domain([0, d3.max(data, d => d.percentage) || 1])
-                            .nice()
-                            .range([height - margin.bottom, margin.top]);
-
-                        // X-axis
-                        svg.append("g")
-                            .attr("transform", `translate(0, ${height - margin.bottom})`)
-                            .call(d3.axisBottom(xScale))
-                            .selectAll("text")
-                            .attr("transform", "rotate(-45)")
-                            .style("text-anchor", "end");
-
-                        // Y-axis
-                        svg.append("g")
-                            .attr("transform", `translate(${margin.left}, 0)`)
-                            .call(d3.axisLeft(yScale));
-
-                        // Bars
-                        svg.selectAll("rect")
-                            .data(data)
-                            .enter()
-                            .append("rect")
-                            .attr("x", d => xScale(d.outcome))
-                            .attr("y", d => yScale(d.percentage))
-                            .attr("width", xScale.bandwidth())
-                            .attr("height", d => height - margin.bottom - yScale(d.percentage))
-                            .attr("fill", "#2196F3");
-                    } else {
-                        d3.select("#bar-chart").html("<p style='color:red;'>No Data Available</p>");
-                    }
-                },
-                error: function(xhr, status, error) {
-                    console.error("AJAX Error:", error);
-                    d3.select("#xg-display").text(`Error: ${error}`);
+        $.ajax({
+            url: "/api/compute",
+            type: "POST",
+            contentType: "application/json",
+            data: JSON.stringify({ x, y, last_action: lastAction, shot_type: shotType, situation }),
+            success: function(response) {
+                if (response["Average xG"] !== undefined) {
+                    renderXG(response["Average xG"]);
                 }
-            });
+                if (response.Result && Object.keys(response.Result).length > 0) {
+                    renderChart(response.Result);
+                } else {
+                    d3.select("#bar-chart").html("<p class='placeholder-text'>No data for this location &amp; filters</p>");
+                }
+            },
+            error: function() {
+                document.getElementById("xg-number").textContent = "—";
+            }
+        });
+    }
+
+    // ── xG display ──
+    function renderXG(xG) {
+        const val = parseFloat(xG);
+        let color;
+        if      (val < 0.05) color = "#475569";
+        else if (val < 0.15) color = "#d97706";
+        else if (val < 0.30) color = "#ea580c";
+        else                 color = "#16a34a";
+
+        const numEl = document.getElementById("xg-number");
+        const subEl = document.getElementById("xg-sublabel");
+        numEl.style.color = color;
+        subEl.style.color = "#64748b";
+        numEl.textContent = val.toFixed(2);
+    }
+
+    // ── Horizontal bar chart ──
+    function renderChart(resultData) {
+        d3.select("#bar-chart").html("");
+
+        const data = Object.entries(resultData)
+            .map(([key, value]) => ({
+                key,
+                label: outcomeLabels[key] || key,
+                value: parseFloat(parseFloat(value).toFixed(1)),
+                color: outcomeColors[key] || "#64748b"
+            }))
+            .filter(d => d.value > 0)
+            .sort((a, b) => b.value - a.value);
+
+        if (data.length === 0) {
+            d3.select("#bar-chart").html("<p class='placeholder-text'>No data</p>");
+            return;
         }
 
-        document.querySelectorAll("select").forEach(select => {
-            select.addEventListener("change", function() {
-                const lastAction = document.getElementById("last-action").value;
-                const shotType = document.getElementById("shot-type").value;
-                const situation = document.getElementById("situation").value;
+        const container = document.getElementById("bar-chart");
+        const totalW  = container.clientWidth || 420;
+        const rowH    = 30;
+        const labelW  = 64;
+        const valueW  = 44;
+        const barAreaW = totalW - labelW - valueW - 8;
+        const svgH    = data.length * rowH + 8;
 
-                d3.select("#selected-options").text(`Selected Options: Last Action - ${lastAction} | Shot Type - ${shotType} | Situation - ${situation}`);
-            });
-        });
+        const svgChart = d3.select("#bar-chart")
+            .append("svg")
+            .attr("width", totalW)
+            .attr("height", svgH);
 
+        const xMax   = d3.max(data, d => d.value);
+        const xScale = d3.scaleLinear().domain([0, xMax]).range([0, barAreaW]);
 
-    </script>
+        const rows = svgChart.selectAll("g.row")
+            .data(data).enter()
+            .append("g").attr("class", "row")
+            .attr("transform", (d, i) => `translate(0, ${4 + i * rowH})`);
+
+        // Label
+        rows.append("text")
+            .attr("x", labelW - 8)
+            .attr("y", rowH / 2)
+            .attr("dominant-baseline", "middle")
+            .attr("text-anchor", "end")
+            .attr("font-size", "11")
+            .attr("font-family", "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif")
+            .attr("fill", "#7d8fa8")
+            .text(d => d.label);
+
+        // Track
+        rows.append("rect")
+            .attr("x", labelW)
+            .attr("y", (rowH - 13) / 2)
+            .attr("width", barAreaW)
+            .attr("height", 13)
+            .attr("rx", 3)
+            .attr("fill", "#131e2e");
+
+        // Bar
+        rows.append("rect")
+            .attr("x", labelW)
+            .attr("y", (rowH - 13) / 2)
+            .attr("width", d => xScale(d.value))
+            .attr("height", 13)
+            .attr("rx", 3)
+            .attr("fill", d => d.color)
+            .attr("opacity", 0.8);
+
+        // Value
+        rows.append("text")
+            .attr("x", labelW + barAreaW + 7)
+            .attr("y", rowH / 2)
+            .attr("dominant-baseline", "middle")
+            .attr("font-size", "11")
+            .attr("font-family", "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif")
+            .attr("font-weight", "600")
+            .attr("fill", "#475569")
+            .text(d => d.value.toFixed(1) + "%");
+    }
+</script>
 </body>
 </html>
