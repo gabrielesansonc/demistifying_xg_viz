@@ -450,10 +450,15 @@
     drawGoalLine(0);
     drawGoalLine(W);
 
-    // Shot marker (rendered last so it sits on top)
+    // Shot marker — capture area circle + center dot (rendered last so it sits on top)
+    const CAPTURE_R = 50; // must match radius_px in compute.py
     const shotMarker = svg.append("g").style("display", "none").style("pointer-events", "none");
-    shotMarker.append("circle").attr("r", 9).attr("fill", "rgba(255,255,255,0.15)").attr("stroke", "rgba(255,255,255,0.9)").attr("stroke-width", 1.5);
-    shotMarker.append("circle").attr("r", 2.5).attr("fill", "white");
+    shotMarker.append("circle").attr("r", CAPTURE_R)
+        .attr("fill", "rgba(255,255,255,0.07)")
+        .attr("stroke", "rgba(255,255,255,0.35)")
+        .attr("stroke-width", 1)
+        .attr("stroke-dasharray", "4 3");
+    shotMarker.append("circle").attr("r", 4).attr("fill", "white").attr("opacity", 0.9);
 
     // ── Click handler ──
     svg.on("click", function(event) {

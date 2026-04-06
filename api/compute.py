@@ -31,8 +31,8 @@ class handler(BaseHTTPRequestHandler):
         situation = data.get("situation")
 
         data_filtered = filter_data(df, lastAction=last_action, shotType=shot_type, situation=situation)
-        average_xG = calculate_avg_xG(x, y, data_filtered, 0.025)
-        results_json = output_results_distribution(x, y, data_filtered, 0.025)
+        average_xG = calculate_avg_xG(x, y, data_filtered, radius_px=50)
+        results_json = output_results_distribution(x, y, data_filtered, radius_px=50)
 
         response = {
             "Average xG": average_xG,
