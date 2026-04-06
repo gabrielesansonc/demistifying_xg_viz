@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Soccer Field with Filters</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+        }
+        #controls {
+            margin-bottom: 10px;
+        }
+        #coordinates, #selected-options {
+            margin-top: 10px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+    #results-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 50px;
+        margin-top: 20px;
+    }
+
+    #xg-display {
+        font-size: 50px;
+        font-weight: bold;
+        padding: 20px;
+        border-radius: 10px;
+    }
+
+    #bar-chart {
+        width: 300px;
+        height: 200px;
+    }
+
+    </style>
+</head>
+<body>
+    <h1>Demystifying xG: Make Your Own Shot & See the xG</h1>
+    <h5>1. Take your shot: Choose your options and click on the field where the shot happened.</h5>
+    <h5>2. Discover the average xG and how similar shots typically end.</h5>
+
+    <div id="controls">
+        <label for="last-action" style="font-size: 14px; font-weight: bold">Last Action: </label>
+        <select id="last-action">
+            <option value="All">All</option>
+            <option value="Aerial">Aerial</option>
+            <option value="Pass">Pass</option>
+            <option value="Foul">Foul</option>
+            <option value="Rebound">Rebound</option>
+            <option value="Cross">Cross</option>
+            <option value="Chipped">Chipped</option>
+            <option value="Dispossessed">Dispossessed</option>
+            <option value="BallTouch">BallTouch</option>
+            <option value="HeadPass">HeadPass</option>
+            <option value="CornerAwarded">CornerAwarded</option>
+            <option value="TakeOn">TakeOn</option>
+            <option value="BallRecovery">BallRecovery</option>
+            <option value="Throughball">Throughball</option>
+            <option value="BlockedPass">BlockedPass</option>
+            <option value="Tackle">Tackle</option>
+            <option value="Standard">Standard</option>
+            <option value="LayOff">LayOff</option>
+            <option value="Card">Card</option>
+            <option value="Clearance">Clearance</option>
+            <option value="Interception">Interception</option>
+            <option value="Challenge">Challenge</option>
+            <option value="End">End</option>
+            <option value="Save">Save</option>
+            <option value="Goal">Goal</option>
+            <option value="OffsidePass">OffsidePass</option>
+            <option value="Start">Start</option>
+            <option value="FormationChange">FormationChange</option>
+            <option value="SubstitutionOn">SubstitutionOn</option>
+            <option value="GoodSkill">GoodSkill</option>
+            <option value="Punch">Punch</option>
+            <option value="KeeperPickup">KeeperPickup</option>
+            <option value="KeeperSweeper">KeeperSweeper</option>
+            <option value="Error">Error</option>
+            <option value="OffsideProvoked">OffsideProvoked</option>
+            <option value="PenaltyFaced">PenaltyFaced</option>
+            <option value="CrossNotClaimed">CrossNotClaimed</option>
+            <option value="ShieldBallOpp">ShieldBallOpp</option>
+            <option value="Smother">Smother</option>
+            <option value="ChanceMissed">ChanceMissed</option>
+        </select>
+
+        <label for="shot-type" style="font-size: 14px; font-weight: bold">Shot Type: </label>
+        <select id="shot-type">
+            <option value="All">All</option>
+            <option value="RightFoot">RightFoot</option>
+            <option value="Head">Head</option>
+            <option value="LeftFoot">LeftFoot</option>
+            <option value="OtherBodyPart">OtherBodyPart</option>
+        </select>
+
+        <label for="situation" style="font-size: 14px; font-weight: bold">Situation: </label>
+        <select id="situation">
+            <option value="All">All</option>
+            <option value="FromCorner">FromCorner</option>
+            <option value="SetPiece">SetPiece</option>
+            <option value="OpenPlay">OpenPlay</option>
+            <option value="DirectFreekick">DirectFreekick</option>
+            <option value="Penalty">Penalty</option>
+        </select>
+    </div>
+
+    <div id="soccer-field"></div>
+    <p id="coordinates">Click anywhere on the field</p>
+    <p id="selected-options">Selected Options: Last Action - All | Shot Type - All | Situation - All</p>
+    <div id="results-container">
+        <div id="xg-display"></div>  <!-- Big Number for xG -->
+        <div id="bar-chart"></div>    <!-- Bar Chart for Histogram -->
+    </div>
+
+
+    <script>
+        const width = 800;
+        const height = width * 0.64;
+
+        const fieldColor = "#007A33";
+        const lineColor = "white";
+
+        const svg = d3.select("#soccer-field")
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height)
+            .style("background-color", fieldColor);
+
+        // Field boundaries
+        svg.append("rect")
+            .attr("x", 0)
+            .attr("y", 0)
+            .attr("width", width)
+            .attr("height", height)
+            .attr("stroke", lineColor)
+            .attr("fill", "none")
+            .attr("stroke-width", 4);
+
+        // Midfield line
+        svg.append("line")
+            .attr("x1", width / 2)
+            .attr("y1", 0)
+            .attr("x2", width / 2)
+            .attr("y2", height)
+            .attr("stroke", lineColor)
+            .attr("stroke-width", 3);
+
+        // Center circle
+        svg.append("circle")
+            .attr("cx", width / 2)
+            .attr("cy", height / 2)
+            .attr("r", width * 0.0915)
+            .attr("stroke", lineColor)
+            .attr("fill", "none")
+            .attr("stroke-width", 3);
+
+        // Penalty areas
+        const penaltyBoxWidth = width * 0.165;
+        const penaltyBoxHeight = height * 0.63;
+        const goalBoxWidth = width * 0.055;
+        const goalBoxHeight = height * 0.285;
+
+        function drawBox(x, y, boxWidth, boxHeight) {
+            svg.append("rect")
+                .attr("x", x)
+                .attr("y", y)
+                .attr("width", boxWidth)
+                .attr("height", boxHeight)
+                .attr("stroke", lineColor)
+                .attr("fill", "none")
+                .attr("stroke-width", 3);
+        }
+
+        drawBox(0, (height - penaltyBoxHeight) / 2, penaltyBoxWidth, penaltyBoxHeight);
+        drawBox(width - penaltyBoxWidth, (height - penaltyBoxHeight) / 2, penaltyBoxWidth, penaltyBoxHeight);
+
+        drawBox(0, (height - goalBoxHeight) / 2, goalBoxWidth, goalBoxHeight);
+        drawBox(width - goalBoxWidth, (height - goalBoxHeight) / 2, goalBoxWidth, goalBoxHeight);
+
+        // Goals
+        function drawGoal(x) {
+            svg.append("line")
+                .attr("x1", x)
+                .attr("y1", (height - goalBoxHeight) / 2)
+                .attr("x2", x)
+                .attr("y2", (height + goalBoxHeight) / 2)
+                .attr("stroke", lineColor)
+                .attr("stroke-width", 3);
+        }
+
+        drawGoal(0);
+        drawGoal(width);
+
+        svg.on("click", function(event) {
+        const [x, y] = d3.pointer(event);
+        const scaledX = (x / width).toFixed(2);
+        const scaledY = (y / height).toFixed(2);
+
+        d3.select("#coordinates").text(`Clicked Coordinates: (${scaledX}, ${scaledY})`);
+
+        sendDataToServer(scaledX, scaledY);
+    });
+
+        // Update selected options text when dropdowns change
+        function updateSelectedOptions() {
+            const lastAction = document.getElementById("last-action").value;
+            const shotType = document.getElementById("shot-type").value;
+            const situation = document.getElementById("situation").value;
+
+            d3.select("#selected-options").text(`Selected Options: Last Action - ${lastAction} | Shot Type - ${shotType} | Situation - ${situation}`);
+        }
+
+        document.querySelectorAll("select").forEach(select => {
+            select.addEventListener("change", updateSelectedOptions);
+        });
+
+        function sendDataToServer(x, y) {
+            const lastAction = document.getElementById("last-action").value;
+            const shotType = document.getElementById("shot-type").value;
+            const situation = document.getElementById("situation").value;
+
+            $.ajax({
+                url: "/api/compute",
+                type: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({
+                    x,
+                    y,
+                    last_action: lastAction,
+                    shot_type: shotType,
+                    situation: situation
+                }),
+                success: function(response) {
+                    console.log("Server Response:", response);
+
+                    // Display the Average xG as a Big Number with Color
+                    if (response["Average xG"] !== undefined) {
+                        let xG = response["Average xG"].toFixed(2);
+                        let colorScale = d3.scaleLinear()
+                            .domain([0, 0.3, 0.5, 1])
+                            .range(["#d73027", "#ff6600", "#1a9850", "#11c223"]);
+
+                        let color = colorScale(xG);
+
+                        d3.select("#xg-display")
+                            .text(`xG: ${xG}`)
+                            .style("background-color", color)
+                            .style("color", "white");
+                    } else {
+                        d3.select("#xg-display").text("Error: Computation Failed");
+                    }
+
+                    // Create a D3 Bar Chart for the Histogram
+                    if (response.Result && Object.keys(response.Result).length > 0) {
+                        d3.select("#bar-chart").html(""); // Clear previous chart
+
+                        let data = Object.entries(response.Result)
+                            .map(([key, value]) => ({ outcome: key, percentage: value }))
+                            .sort((a, b) => b.percentage - a.percentage);
+
+                        let width = 300;
+                        let height = 200;
+                        let margin = { top: 20, right: 20, bottom: 50, left: 50 };
+
+                        let svg = d3.select("#bar-chart")
+                            .append("svg")
+                            .attr("width", width)
+                            .attr("height", height);
+
+                        let xScale = d3.scaleBand()
+                            .domain(data.map(d => d.outcome))
+                            .range([margin.left, width - margin.right])
+                            .padding(0.2);
+
+                        let yScale = d3.scaleLinear()
+                            .domain([0, d3.max(data, d => d.percentage) || 1])
+                            .nice()
+                            .range([height - margin.bottom, margin.top]);
+
+                        // X-axis
+                        svg.append("g")
+                            .attr("transform", `translate(0, ${height - margin.bottom})`)
+                            .call(d3.axisBottom(xScale))
+                            .selectAll("text")
+                            .attr("transform", "rotate(-45)")
+                            .style("text-anchor", "end");
+
+                        // Y-axis
+                        svg.append("g")
+                            .attr("transform", `translate(${margin.left}, 0)`)
+                            .call(d3.axisLeft(yScale));
+
+                        // Bars
+                        svg.selectAll("rect")
+                            .data(data)
+                            .enter()
+                            .append("rect")
+                            .attr("x", d => xScale(d.outcome))
+                            .attr("y", d => yScale(d.percentage))
+                            .attr("width", xScale.bandwidth())
+                            .attr("height", d => height - margin.bottom - yScale(d.percentage))
+                            .attr("fill", "#2196F3");
+                    } else {
+                        d3.select("#bar-chart").html("<p style='color:red;'>No Data Available</p>");
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error("AJAX Error:", error);
+                    d3.select("#xg-display").text(`Error: ${error}`);
+                }
+            });
+        }
+
+        document.querySelectorAll("select").forEach(select => {
+            select.addEventListener("change", function() {
+                const lastAction = document.getElementById("last-action").value;
+                const shotType = document.getElementById("shot-type").value;
+                const situation = document.getElementById("situation").value;
+
+                d3.select("#selected-options").text(`Selected Options: Last Action - ${lastAction} | Shot Type - ${shotType} | Situation - ${situation}`);
+            });
+        });
+
+
+    </script>
+</body>
+</html>
