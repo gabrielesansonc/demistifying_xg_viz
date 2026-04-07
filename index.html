@@ -230,6 +230,74 @@
             text-align: center;
             padding: 1.25rem 0 0.75rem;
         }
+
+        /* ── Mobile ── */
+        @media (max-width: 600px) {
+            body {
+                padding: 1.25rem 1rem 3rem;
+            }
+
+            .header {
+                margin-bottom: 1.25rem;
+                padding-bottom: 1.25rem;
+            }
+
+            .header h1 {
+                font-size: 1.05rem;
+            }
+
+            .steps {
+                flex-direction: column;
+                gap: 0.6rem;
+                align-items: flex-start;
+            }
+
+            .step {
+                max-width: 100%;
+            }
+
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 0.65rem;
+            }
+
+            .filter-group select {
+                min-width: 0;
+                width: 100%;
+            }
+
+            .status-bar {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.15rem;
+            }
+
+            #selected-options {
+                display: none;
+            }
+
+            .results {
+                flex-direction: column;
+            }
+
+            .xg-panel {
+                flex-direction: row;
+                align-items: center;
+                justify-content: center;
+                gap: 1rem;
+                min-width: 0;
+                padding: 0.9rem 1.25rem;
+            }
+
+            .xg-panel .panel-label {
+                margin-bottom: 0;
+            }
+
+            #xg-number {
+                font-size: 2.75rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -373,10 +441,13 @@
     };
 
     // ── Build SVG ──
+    // viewBox keeps internal coordinates at 800×512 regardless of screen size.
+    // d3.pointer() returns coords in viewBox space so normalization stays correct.
     const svg = d3.select("#soccer-field")
         .append("svg")
-        .attr("width", W)
-        .attr("height", H)
+        .attr("viewBox", `0 0 ${W} ${H}`)
+        .attr("width", "100%")
+        .attr("preserveAspectRatio", "xMidYMid meet")
         .style("cursor", "crosshair")
         .style("display", "block");
 
