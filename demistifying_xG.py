@@ -1,14 +1,18 @@
 from utility_demistifying_xG import filter_data, calculate_avg_xG, output_results_distribution
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS  # 🔹 Import CORS
 import pandas as pd
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='/static')
 CORS(app)  # 🔹 Enable CORS for all routes
 
 df = pd.read_csv('shots.csv')
 print(output_results_distribution(.90, 0.5, df, 0.025))
+
+@app.route('/')
+def serve_index():
+    return send_from_directory('.', 'index.html')
 
 @app.route('/compute', methods=['POST'])
 def compute():
