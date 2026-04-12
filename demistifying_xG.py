@@ -3,18 +3,21 @@ from utility_demistifying_xG import filter_data, calculate_avg_xG, output_result
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS  # 🔹 Import CORS
 import pandas as pd
+import os
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 CORS(app)  # 🔹 Enable CORS for all routes
 
-df = pd.read_csv('shots.csv')
+# Get absolute path to shots.csv for both local and Vercel environments
+csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'shots.csv')
+df = pd.read_csv(csv_path)
 print(output_results_distribution(.90, 0.5, df, 0.025))
 
 @app.route('/')
 def serve_index():
     return send_from_directory('.', 'index.html')
 
-@app.route('/compute', methods=['POST'])
+@app.route('/api/compute', methods=['POST'])
 def compute():
     data = request.json  
 
