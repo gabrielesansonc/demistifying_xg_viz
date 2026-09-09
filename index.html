@@ -137,13 +137,21 @@
             overflow: hidden;
             border: 1px solid var(--border-default);
             box-shadow: var(--shadow-lg);
-            display: flex;
-            justify-content: center;
         }
 
+        /* The SVG needs a definite width to resolve `width: 100%` against, otherwise
+           it falls back to its default replaced size (and on iOS Safari overflows the
+           wrapper, which then crops the pitch). */
         #soccer-field {
             display: block;
+            width: 100%;
             line-height: 0;
+        }
+
+        #soccer-field svg {
+            display: block;
+            width: 100%;
+            height: auto;
         }
 
         /* ── Status bar ── */
@@ -315,7 +323,7 @@
         <div class="steps">
             <div class="step">
                 <span class="step-badge">1</span>
-                <span>Choose your options and click on the field where the shot happened.</span>
+                <span>Choose your options, then click or tap the pitch where the shot happened.</span>
             </div>
             <div class="step">
                 <span class="step-badge">2</span>
@@ -400,7 +408,7 @@
     </div>
 
     <div class="status-bar">
-        <span id="coordinates">Click anywhere on the field to place a shot</span>
+        <span id="coordinates">Click or tap anywhere on the pitch to place a shot</span>
         <span id="selected-options">Last Action: All &nbsp;·&nbsp; Shot Type: All &nbsp;·&nbsp; Situation: All</span>
     </div>
 
@@ -421,13 +429,31 @@
 </div>
 
 <script>
-    const W = 800;
-    const H = Math.round(W * 0.64); // 512
+    // ── Pitch geometry ──
+    // The pitch is always drawn in an 800 × 512 coordinate space. Shot coordinates in
+    // shots.csv follow the Understat convention — X = 1 is the goal being attacked —
+    // so the pitch is laid out with the attacking goal on the right (landscape) or at
+    // the top (portrait), and the normalisation sent to the API never changes.
+    const FW = 800;
+    const FH = 512;
+    const BAND_TOP    = 42;  // caption strip above the pitch
+    const BAND_BOTTOM = 36;  // caption strip below the pitch (portrait only)
 
     const FIELD_DARK  = "#263d18";
     const FIELD_LIGHT = "#2a4219";
     const LINE_COLOR  = "rgba(255,255,255,0.75)";
     const LINE_W      = 2;
+    const CAPTURE_R   = 25;  // must match radius_px in api/compute.py
+
+    const rootStyle  = getComputedStyle(document.documentElement);
+    const ACCENT     = (rootStyle.getPropertyValue("--accent") || "#9FD800").trim();
+    const BAND_BG    = (rootStyle.getPropertyValue("--bg-surface") || "#112240").trim();
+    const DIM_TEXT   = "rgba(255,255,255,0.45)";
+    const LABEL_FONT = "Be Vietnam Pro, system-ui, -apple-system, sans-serif";
+
+    // Below this width (matching the CSS breakpoint) the pitch is rotated upright so
+    // the whole pitch fits a phone screen.
+    const portraitMQ = window.matchMedia("(max-width: 600px)");
 
     const outcomeLabels = {
         "Goal":        "Goal",
@@ -447,114 +473,214 @@
         "OwnGoals":    "#94a3b8"
     };
 
-    // ── Build SVG ──
-    // viewBox keeps internal coordinates at 800×512 regardless of screen size.
-    // d3.pointer() returns coords in viewBox space so normalization stays correct.
-    const svg = d3.select("#soccer-field")
-        .append("svg")
-        .attr("viewBox", `0 0 ${W} ${H}`)
-        .attr("width", "100%")
-        .attr("preserveAspectRatio", "xMidYMid meet")
-        .style("cursor", "crosshair")
-        .style("display", "block");
+    // ── State kept across re-renders ──
+    let shot = null;          // {x, y} in pitch units
+    let isPortrait = null;    // orientation currently rendered
+    let svg, pitch, shotMarker;
 
-    // Grass stripes
-    const NUM_STRIPES = 8;
-    const stripeH = H / NUM_STRIPES;
-    for (let i = 0; i < NUM_STRIPES; i++) {
-        svg.append("rect")
-            .attr("x", 0).attr("y", i * stripeH)
-            .attr("width", W).attr("height", stripeH)
-            .attr("fill", i % 2 === 0 ? FIELD_DARK : FIELD_LIGHT);
+    // ── Direction label: "ATTACKING GOAL" + an arrow pointing at that goal ──
+    function labelWithArrow(parent, x, y, text, dir, color, align) {
+        const g = parent.append("g");
+        const arrowW = 16, gap = 8;
+        const arrowFirst = (dir === "left" || dir === "up");
+
+        const label = g.append("text")
+            .attr("y", 0)
+            .attr("dominant-baseline", "middle")
+            .attr("font-size", 12)
+            .attr("font-family", LABEL_FONT)
+            .attr("font-weight", 700)
+            .attr("letter-spacing", "0.1em")
+            .attr("fill", color)
+            .text(text);
+
+        const textW = label.node().getComputedTextLength();
+        const total = textW + gap + arrowW;
+        label.attr("x", arrowFirst ? arrowW + gap : 0);
+
+        const rotation = { right: 0, down: 90, left: 180, up: -90 }[dir];
+        const arrow = g.append("g")
+            .attr("transform", `translate(${arrowFirst ? 0 : textW + gap}, 0) rotate(${rotation}, ${arrowW / 2}, 0)`);
+        arrow.append("path")
+            .attr("d", `M0,0 H${arrowW}`)
+            .attr("stroke", color).attr("stroke-width", 2).attr("stroke-linecap", "round");
+        arrow.append("path")
+            .attr("d", `M${arrowW - 5.5},-4.5 L${arrowW},0 L${arrowW - 5.5},4.5`)
+            .attr("fill", "none").attr("stroke", color).attr("stroke-width", 2)
+            .attr("stroke-linecap", "round").attr("stroke-linejoin", "round");
+
+        const dx = align === "end" ? -total : align === "middle" ? -total / 2 : 0;
+        g.attr("transform", `translate(${x + dx}, ${y})`);
+        return g;
     }
 
-    // Field border
-    svg.append("rect")
-        .attr("x", 1).attr("y", 1)
-        .attr("width", W - 2).attr("height", H - 2)
-        .attr("stroke", LINE_COLOR).attr("fill", "none")
-        .attr("stroke-width", LINE_W * 1.5);
+    // ── Draw the whole widget for one orientation ──
+    function drawField(portrait) {
+        isPortrait = portrait;
 
-    // Midfield line
-    svg.append("line")
-        .attr("x1", W/2).attr("y1", 0)
-        .attr("x2", W/2).attr("y2", H)
-        .attr("stroke", LINE_COLOR).attr("stroke-width", LINE_W);
+        const pitchLen = portrait ? FW : FH;              // pitch extent along the screen's y axis
+        const vbW = portrait ? FH : FW;
+        const vbH = BAND_TOP + pitchLen + (portrait ? BAND_BOTTOM : 0);
 
-    // Center circle
-    svg.append("circle")
-        .attr("cx", W/2).attr("cy", H/2)
-        .attr("r", W * 0.0915)
-        .attr("stroke", LINE_COLOR).attr("fill", "none")
-        .attr("stroke-width", LINE_W);
+        d3.select("#soccer-field").html("");
 
-    // Center dot
-    svg.append("circle")
-        .attr("cx", W/2).attr("cy", H/2)
-        .attr("r", 3).attr("fill", LINE_COLOR);
+        svg = d3.select("#soccer-field")
+            .append("svg")
+            .attr("viewBox", `0 0 ${vbW} ${vbH}`)
+            .attr("preserveAspectRatio", "xMidYMid meet")
+            .attr("role", "img")
+            .attr("aria-label", "Football pitch. The attacking goal is at the " + (portrait ? "top" : "right") + ". Click to place a shot.")
+            .style("cursor", "crosshair");
 
-    // Boxes
-    const pbW = W * 0.165;
-    const pbH = H * 0.63;
-    const gbW = W * 0.055;
-    const gbH = H * 0.285;
-
-    function drawRect(x, y, w, h) {
+        // Caption strips sit outside the pitch, so their text stays upright when the
+        // pitch itself is rotated for portrait screens.
         svg.append("rect")
-            .attr("x", x).attr("y", y)
-            .attr("width", w).attr("height", h)
+            .attr("x", 0).attr("y", 0).attr("width", vbW).attr("height", BAND_TOP)
+            .attr("fill", BAND_BG);
+
+        if (portrait) {
+            labelWithArrow(svg, vbW / 2, BAND_TOP / 2, "ATTACKING GOAL", "up", ACCENT, "middle");
+            svg.append("rect")
+                .attr("x", 0).attr("y", BAND_TOP + pitchLen).attr("width", vbW).attr("height", BAND_BOTTOM)
+                .attr("fill", BAND_BG);
+            labelWithArrow(svg, vbW / 2, BAND_TOP + pitchLen + BAND_BOTTOM / 2, "OWN GOAL", "down", DIM_TEXT, "middle");
+        } else {
+            labelWithArrow(svg, 16, BAND_TOP / 2, "OWN GOAL", "left", DIM_TEXT, "start");
+            labelWithArrow(svg, vbW - 16, BAND_TOP / 2, "ATTACKING GOAL", "right", ACCENT, "end");
+        }
+
+        // Everything below is drawn in pitch coordinates (x = 0 own goal, x = FW
+        // attacking goal); the group transform handles the portrait rotation.
+        pitch = svg.append("g")
+            .attr("transform", portrait
+                ? `translate(0, ${BAND_TOP + FW}) rotate(-90)`
+                : `translate(0, ${BAND_TOP})`);
+
+        // Grass stripes
+        const NUM_STRIPES = 8;
+        const stripeH = FH / NUM_STRIPES;
+        for (let i = 0; i < NUM_STRIPES; i++) {
+            pitch.append("rect")
+                .attr("x", 0).attr("y", i * stripeH)
+                .attr("width", FW).attr("height", stripeH)
+                .attr("fill", i % 2 === 0 ? FIELD_DARK : FIELD_LIGHT);
+        }
+
+        // Attacking half wash — a second, always-visible cue for which way shots go
+        const gradId = "attacking-half-gradient";
+        const grad = svg.append("defs").append("linearGradient")
+            .attr("id", gradId)
+            .attr("gradientUnits", "userSpaceOnUse")
+            .attr("x1", FW / 2).attr("y1", 0).attr("x2", FW).attr("y2", 0);
+        grad.append("stop").attr("offset", "0%").attr("stop-color", ACCENT).attr("stop-opacity", 0);
+        grad.append("stop").attr("offset", "100%").attr("stop-color", ACCENT).attr("stop-opacity", 0.16);
+
+        pitch.append("rect")
+            .attr("x", FW / 2).attr("y", 0)
+            .attr("width", FW / 2).attr("height", FH)
+            .attr("fill", `url(#${gradId})`);
+
+        // Field border
+        pitch.append("rect")
+            .attr("x", 1).attr("y", 1)
+            .attr("width", FW - 2).attr("height", FH - 2)
+            .attr("stroke", LINE_COLOR).attr("fill", "none")
+            .attr("stroke-width", LINE_W * 1.5);
+
+        // Midfield line
+        pitch.append("line")
+            .attr("x1", FW / 2).attr("y1", 0)
+            .attr("x2", FW / 2).attr("y2", FH)
+            .attr("stroke", LINE_COLOR).attr("stroke-width", LINE_W);
+
+        // Center circle + dot
+        pitch.append("circle")
+            .attr("cx", FW / 2).attr("cy", FH / 2)
+            .attr("r", FW * 0.0915)
             .attr("stroke", LINE_COLOR).attr("fill", "none")
             .attr("stroke-width", LINE_W);
-    }
+        pitch.append("circle")
+            .attr("cx", FW / 2).attr("cy", FH / 2)
+            .attr("r", 3).attr("fill", LINE_COLOR);
 
-    drawRect(0, (H - pbH) / 2, pbW, pbH);
-    drawRect(0, (H - gbH) / 2, gbW, gbH);
-    drawRect(W - pbW, (H - pbH) / 2, pbW, pbH);
-    drawRect(W - gbW, (H - gbH) / 2, gbW, gbH);
+        // Boxes
+        const pbW = FW * 0.165;
+        const pbH = FH * 0.63;
+        const gbW = FW * 0.055;
+        const gbH = FH * 0.285;
 
-    // Penalty spots
-    const lPenX = pbW * 0.73;
-    const rPenX = W - lPenX;
-    const penY  = H / 2;
+        function drawRect(x, y, w, h) {
+            pitch.append("rect")
+                .attr("x", x).attr("y", y)
+                .attr("width", w).attr("height", h)
+                .attr("stroke", LINE_COLOR).attr("fill", "none")
+                .attr("stroke-width", LINE_W);
+        }
 
-    svg.append("circle").attr("cx", lPenX).attr("cy", penY).attr("r", 2.5).attr("fill", LINE_COLOR);
-    svg.append("circle").attr("cx", rPenX).attr("cy", penY).attr("r", 2.5).attr("fill", LINE_COLOR);
+        drawRect(0, (FH - pbH) / 2, pbW, pbH);
+        drawRect(0, (FH - gbH) / 2, gbW, gbH);
+        drawRect(FW - pbW, (FH - pbH) / 2, pbW, pbH);
+        drawRect(FW - gbW, (FH - gbH) / 2, gbW, gbH);
 
-    // Goals (lines at field edges)
-    function drawGoalLine(x) {
-        svg.append("line")
-            .attr("x1", x).attr("y1", (H - gbH) / 2)
-            .attr("x2", x).attr("y2", (H + gbH) / 2)
+        // Penalty spots
+        const lPenX = pbW * 0.73;
+        pitch.append("circle").attr("cx", lPenX).attr("cy", FH / 2).attr("r", 2.5).attr("fill", LINE_COLOR);
+        pitch.append("circle").attr("cx", FW - lPenX).attr("cy", FH / 2).attr("r", 2.5).attr("fill", LINE_COLOR);
+
+        // Goal lines — the attacking goal is highlighted in the accent colour.
+        // Both are inset by half their stroke so nothing is clipped by the pitch edge.
+        pitch.append("line")
+            .attr("x1", 1.5).attr("y1", (FH - gbH) / 2)
+            .attr("x2", 1.5).attr("y2", (FH + gbH) / 2)
             .attr("stroke", LINE_COLOR).attr("stroke-width", LINE_W * 1.5);
+        pitch.append("line")
+            .attr("x1", FW - 3).attr("y1", (FH - gbH) / 2)
+            .attr("x2", FW - 3).attr("y2", (FH + gbH) / 2)
+            .attr("stroke", ACCENT).attr("stroke-width", 6)
+            .attr("stroke-linecap", "round");
+
+        // Shot marker — capture area circle + center dot (added last so it sits on top)
+        shotMarker = pitch.append("g").style("display", "none").style("pointer-events", "none");
+        shotMarker.append("circle").attr("r", CAPTURE_R)
+            .attr("fill", "rgba(255,255,255,0.07)")
+            .attr("stroke", "rgba(255,255,255,0.35)")
+            .attr("stroke-width", 1)
+            .attr("stroke-dasharray", "4 3");
+        shotMarker.append("circle").attr("r", 4).attr("fill", "white").attr("opacity", 0.9);
+
+        if (shot) placeMarker();
+
+        svg.on("click", function (event) {
+            // Measured against the pitch group, so the portrait rotation is undone for us.
+            const [x, y] = d3.pointer(event, pitch.node());
+            if (x < 0 || x > FW || y < 0 || y > FH) return;  // caption strips
+
+            shot = { x, y };
+            placeMarker();
+
+            const scaledX = (x / FW).toFixed(3);
+            const scaledY = (y / FH).toFixed(3);
+            document.getElementById("coordinates").textContent =
+                `Shot at (${scaledX}, ${scaledY})`;
+
+            sendDataToServer(scaledX, scaledY);
+        });
     }
-    drawGoalLine(0);
-    drawGoalLine(W);
 
-    // Shot marker — capture area circle + center dot (rendered last so it sits on top)
-    const CAPTURE_R = 25; // must match radius_px in compute.py
-    const shotMarker = svg.append("g").style("display", "none").style("pointer-events", "none");
-    shotMarker.append("circle").attr("r", CAPTURE_R)
-        .attr("fill", "rgba(255,255,255,0.07)")
-        .attr("stroke", "rgba(255,255,255,0.35)")
-        .attr("stroke-width", 1)
-        .attr("stroke-dasharray", "4 3");
-    shotMarker.append("circle").attr("r", 4).attr("fill", "white").attr("opacity", 0.9);
-
-    // ── Click handler ──
-    svg.on("click", function(event) {
-        const [px, py] = d3.pointer(event);
-        const scaledX = (px / W).toFixed(3);
-        const scaledY = (py / H).toFixed(3);
-
+    function placeMarker() {
         shotMarker
             .style("display", null)
-            .attr("transform", `translate(${px},${py})`);
+            .attr("transform", `translate(${shot.x},${shot.y})`);
+    }
 
-        document.getElementById("coordinates").textContent =
-            `Shot at (${scaledX}, ${scaledY})`;
+    drawField(portraitMQ.matches);
 
-        sendDataToServer(scaledX, scaledY);
-    });
+    // Re-render only when the orientation actually flips; the SVG scales on its own.
+    const onOrientationChange = () => {
+        if (portraitMQ.matches !== isPortrait) drawField(portraitMQ.matches);
+    };
+    if (portraitMQ.addEventListener) portraitMQ.addEventListener("change", onOrientationChange);
+    else portraitMQ.addListener(onOrientationChange);
 
     // ── Dropdown sync ──
     function updateSelectedOptions() {
